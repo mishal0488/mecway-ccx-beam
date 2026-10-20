@@ -1,77 +1,72 @@
-# Mecway to patched CCX B31T/B31E bridge (v0.3 prototype)
+# Mecway-to-CCX UB31 Beam Bridge v0.4 (development)
 
-A diagnostic bridge for Mecway 34 native `.liml` models and the patched CCX
-UB31/B31T/B31E beam solver.
+Native Mecway IronPython 2.7 bridge for patched CalculiX B31T / B31E beams.
+**No external Python installation is required for Mecway operation.**
 
-**IMPORTANT: NOT SOLVER-READY.** The bridge currently extracts node and
-element connectivity, material properties, fixed end nodes, nodal forces, and
-gravity. It detects beam sections, local orientations, end releases and offsets,
-but the exact UB31 mappings are not implemented. The generated `.inp` is a
-**diagnostic draft only** and MUST NOT be run as an engineering simulation.
+## Installation
 
-## Requirements
+Download/clone the dev branch. Keep `bridge.py` and
+`mecway_launcher.py` in the same directory. In Mecway, select
+**Tools > Scripts... > New** and register `bridge/mecway_launcher.py`.
+Open and save a Mecway .liml file; then use
+**Tools > mecway_launcher** to export diagnostics.
 
-- Windows with Mecway scripting support (its built-in IronPython 2.7).
-- The two Python files in this folder.
-- **No standalone Python 3 installation is needed.**
-- There is no requirement for Windows Forms, .NET UI setup, pip, or Ubuntu.
+The launcher saves the currently open model through `mw.save()` and reads
+the model path through `mw.file_name()`. Generated files are placed next to
+the saved model:
 
-The IronPython approach follows the Mecway API use in
-[MecwayAsterBridge](https://github.com/mishal0488/MecwayAsterBridge/tree/dev):
-`mw.save()`, `mw.file_name()` and `mw.message()`.
+- `<model>_ccx_draft.inp`: **DIAGNOSTIC ONLY**; never use for design or reliable numerical solutions
+- `<model>_ccx_draft.report.json`: counts, material/section dimensions, validation errors
 
-## Run from inside Mecway
+## v0.4 implementation
 
-1. Download the current `dev` branch and extract it into a folder.
-2. Keep `bridge.py` and `mecway_launcher.py` **in the same folder**.
-3. In Mecway, use **Tools > Scripts... > New** and select
-   `bridge/mecway_launcher.py`.
-4. Open your Mecway model (`.liml`) and run
-   **Tools > mecway_launcher**.
-5. Mecway saves the **currently open** model and processes it directly.
-   No file picker is used.
+- I-beams: Mecway `ia,ib,ic,id` map to UB31 `SECTION=I`:
+  `h,b,tf,b,tf,tw`
+- C channels: Mecway `ca,cb,cc,cd` map to
+  `SECTION=CHAN`: `h,b,tf,tw`
+- L angles: Mecway `la,lb,lc` map to
+  `SECTION=L`: `b,h,t`
+- Rectangular bars, rectangular tubes, circular bars and circular tubes
+  are translated into RECT, BOX, CIRC and PIPE cards.
+- Mecway `<orientation>` selections are mapped per element; the supplied
+  vector is projected normal to the member and its `angleu` is applied
+  with a right-handed rotation about the beam axis. The missing-orientation
+  default matches the vector rule in MecwayAsterBridge dev.
+- Members with the same section but different transverse orientation are
+  written in separate `BEAM_####` elsets, with a `*BEAM SECTION` per group.
+- All dimensions are SI (m), and the output includes material, density,
+  basic loads, fixed beam-end support nodes and gravity.
 
-The script writes two files beside the Mecway model:
+## Supplied test.liml findings
 
-- `<model>_ccx_draft.inp` - UNSAFE diagnostic CCX deck.
-- `<model>_ccx_draft.report.json` - counts and validation issues.
+345 nodes; 360 line2 beams; three material profiles:
 
-If the script fails, the traceback is shown via `mw.message()` and
-best-effort logged to `bridge/mecway_launcher_error.log`.
+| Mecway | UB31 | SI dimensions |
+|---|---|---|
+| 152x152x30 | I | 0.1575, 0.1529, 0.0094, 0.1529, 0.0094, 0.0066 |
+| C180x70 | CHAN | 0.18, 0.07, 0.011, 0.008 |
+| 70x70x8 | L | 0.07, 0.07, 0.008 |
 
-## Expected result with provided test.liml
+Five material+orientation groups. **Three unresolved validation items**:
+beam end releases, beam offsets, and L-section principal-axis rotation.
 
-- 345 nodes
-- 360 two-node beam elements
-- Fixed support nodes: 1, 4, 8
-- Three section/material groups
-- Seven validation issues (three sections, two local orientations,
-  one flexible joint and one member offset)
+## Safety and outstanding work
 
-This validates **model extraction**, not physical accuracy.
+The UB31 native interface is source-checked in the uploaded
+`CCX-UB31-B31T-B31E-update.zip`, not numerically regression-tested here.
+Mecway's L-axis convention uses principal properties whereas UB31 rotates
+L sections internally. Do not treat the L output as equivalent until
+orientation compatibility is verified. Releases and offsets are intentionally
+NOT translated; silently omitting them would change the structural model.
+The `safe_to_solve` report flag remains **false**.
 
-## Use from a Python CLI (optional)
+Next phase: verify each release at a selected member end and implement
+UB31-compatible offsets; then carry out beam analytical regressions and
+add CCX process launch and Mecway result import.
 
-```powershell
-python bridge.py "C:\models\test.liml" --beam B31T --draft
-```
+References for axis/shape mapping: uploaded patch README and Fortran
+`e_c3d_ub31.f`; MecwayAsterBridge dev
+`Scripts/bridge_from_liml.py` and `Scripts/bridge_mesh.py`.
 
-The script also permits B31E using `--beam B31E`.
-Without `--draft`, it writes the validation report only and deliberately
-refuses to generate an input file suitable for solving.
-
-## Next work
-
-1. Verify the patched UB31 `*BEAM SECTION` conventions for I, CHAN and L
-   sections and implement correct CCX section cards.
-2. Convert Mecway beam local-axis rotations and eccentricities correctly.
-3. Translate element-end releases, distinguishing first/second beam ends.
-4. Verify gravity and constraint translations on small benchmark models.
-5. Enable CCX execution only after a complete safe translation.
-6. Read FRD/DAT results back into Mecway with verified units/quantities.
-
-### Development safety
-
-Do not load a `*_ccx_draft.inp` into CCX and rely on numerical results.
-This v0.3 has been exercised with a simulated Mecway API under CPython and
-the provided Mecway model. Actual Mecway/IronPython testing is still required.
+To run standalone Python tests (not needed for Mecway):
+`python -m unittest discover -s tests -v`.
