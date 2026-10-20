@@ -1,0 +1,35 @@
+{
+  "source": "/mnt/data/test.liml",
+  "element_type": "B31T",
+  "analysis": "S30",
+  "nodes": 345,
+  "elements": 360,
+  "materials": [
+    "152x152x30",
+    "70x70x8",
+    "C180x70"
+  ],
+  "element_groups": {
+    "152x152x30": 60,
+    "C180x70": 220,
+    "70x70x8": 80
+  },
+  "fixed_nodes": [
+    1,
+    4,
+    8
+  ],
+  "nodal_forces": 1,
+  "gravity_loads": 1,
+  "errors": [
+    "Unsupported Mecway beam end releases (flexible_joint_on_beam_faces); requires verified UB31 mapping",
+    "Unsupported Mecway geometric member offsets (element_offset_elements); requires verified UB31 mapping",
+    "Unverified beam orientation (element_orientation_elements(2)); axis rotation must be translated",
+    "Unverified beam orientation (element_orientation_elements); axis rotation must be translated",
+    "Unverified section geometry for 152x152x30 (Mecway type I); UB31 dimension ordering must be checked",
+    "Unverified section geometry for 70x70x8 (Mecway type L); UB31 dimension ordering must be checked",
+    "Unverified section geometry for C180x70 (Mecway type C); UB31 dimension ordering must be checked"
+  ],
+  "warnings": [],
+  "safe_to_solve": false
+}
