@@ -1,5 +1,6 @@
 {
-  "source": "/mnt/data/test.liml",
+  "version": "0.4",
+  "source": "test.liml",
   "element_type": "B31T",
   "analysis": "S30",
   "nodes": 345,
@@ -9,6 +10,41 @@
     "70x70x8",
     "C180x70"
   ],
+  "section_definitions": {
+    "152x152x30": {
+      "ccx_section": "I",
+      "dimensions_m": [
+        0.1575,
+        0.1529,
+        0.0094,
+        0.1529,
+        0.0094,
+        0.0066
+      ],
+      "area_m2": 0.00378994
+    },
+    "70x70x8": {
+      "ccx_section": "L",
+      "dimensions_m": [
+        0.07,
+        0.07,
+        0.008
+      ],
+      "area_m2": 0.001056
+    },
+    "C180x70": {
+      "ccx_section": "CHAN",
+      "dimensions_m": [
+        0.18,
+        0.07,
+        0.011,
+        0.008
+      ],
+      "area_m2": 0.002804
+    }
+  },
+  "oriented_elements": 280,
+  "beam_section_orientation_groups": 5,
   "element_groups": {
     "152x152x30": 60,
     "C180x70": 220,
@@ -22,14 +58,11 @@
   "nodal_forces": 1,
   "gravity_loads": 1,
   "errors": [
-    "Unsupported Mecway beam end releases (flexible_joint_on_beam_faces); requires verified UB31 mapping",
-    "Unsupported Mecway geometric member offsets (element_offset_elements); requires verified UB31 mapping",
-    "Unverified beam orientation (element_orientation_elements(2)); axis rotation must be translated",
-    "Unverified beam orientation (element_orientation_elements); axis rotation must be translated",
-    "Unverified section geometry for 152x152x30 (Mecway type I); UB31 dimension ordering must be checked",
-    "Unverified section geometry for 70x70x8 (Mecway type L); UB31 dimension ordering must be checked",
-    "Unverified section geometry for C180x70 (Mecway type C); UB31 dimension ordering must be checked"
+    "L principal-axis rotation vs Mecway V unverified in patched UB31",
+    "Unsupported beam end releases: selection flexible_joint_on_beam_faces",
+    "Unsupported member offsets: selection element_offset_elements"
   ],
   "warnings": [],
-  "safe_to_solve": false
+  "safe_to_solve": false,
+  "draft_written": true
 }
