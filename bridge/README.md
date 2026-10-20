@@ -8,6 +8,31 @@ This prototype reads a Mecway 34 native `.liml` XML file and identifies beam mes
 
 Python 3.10+ only; no third-party packages. Designed for Windows as well as Linux.
 
+## Run directly from Mecway (recommended)
+
+The `mecway_launcher.py` script is for Mecway's embedded **IronPython 2.7**.
+It follows the same Mecway integration mechanism used in
+[MecwayAsterBridge](https://github.com/mishal0488/MecwayAsterBridge/tree/dev):
+`mw.save()`, `mw.file_name()` and an external `subprocess` call.
+
+1. Install a separate CPython 3.10+ on Windows. In Command Prompt, verify `py -3 --version`.
+2. Place `mecway_launcher.py` and `bridge.py` together in the same folder.
+3. In Mecway choose **Tools > Scripts... > New** and select `mecway_launcher.py`.
+4. Open your Mecway model and choose **Tools > mecway_launcher**.
+5. Mecway saves the *currently open* model and executes `bridge.py` with Python 3.
+   The launcher displays a summary using `mw.message()`, without using Windows Forms.
+
+Next to the saved `.liml` you will find:
+- `<model>_ccx_draft.inp` -- **unsafe for solver use**, diagnostic only
+- `<model>_ccx_draft.report.json` -- validation issues and extracted model statistics
+- `<model>_ccx_draft.launcher.log` -- Python output, useful for debugging
+
+If `py.exe` is unavailable, set environment variable `MECWAY_CCX_PYTHON` to
+the full path of your Python 3 `python.exe`, then restart Mecway.
+The launcher always produces a diagnostic draft and **never starts CCX yet**.
+It has been locally integration-tested with a simulated Mecway `mw` API
+and the supplied `test.liml`; testing with actual Mecway IronPython is pending.
+
 ## Run from Windows PowerShell
 
 ```powershell
@@ -41,6 +66,6 @@ The draft deliberately omits beam sections and does not guarantee valid CalculiX
 3. Decode `<flexiblejoint>` face ID and local DOF mapping, and implement the specific UB31 release syntax.
 4. Translate spatial offsets or connector kinematics without adding spurious stiffness.
 5. Add supported static/nonlinear/dynamic steps and result compatibility.
-6. Integrate with Mecway's external script launcher, then CCX invocation and FRD import.
+6. Validate the IronPython launcher in Mecway 34, then implement CCX invocation and FRD import.
 
 The packaged repository's native interface is source-checked but not runtime-regression-certified. Solve simple reference problems and compare analytical displacement/reaction/force results before extending to frames.
