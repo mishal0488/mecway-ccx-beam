@@ -1,4 +1,4 @@
-# Mecway-to-CCX UB31 Beam Bridge v0.4 (development)
+# Mecway-to-CCX UB31 Beam Bridge v0.5 (development)
 
 Native Mecway IronPython 2.7 bridge for patched CalculiX B31T / B31E beams.
 **No external Python installation is required for Mecway operation.**
@@ -18,7 +18,7 @@ the saved model:
 - `<model>_ccx_draft.inp`: **DIAGNOSTIC ONLY**; never use for design or reliable numerical solutions
 - `<model>_ccx_draft.report.json`: counts, material/section dimensions, validation errors
 
-## v0.4 implementation
+## v0.5 implementation
 
 - I-beams: Mecway `ia,ib,ic,id` map to UB31 `SECTION=I`:
   `h,b,tf,b,tf,tw`
@@ -36,6 +36,14 @@ the saved model:
   written in separate `BEAM_####` elsets, with a `*BEAM SECTION` per group.
 - All dimensions are SI (m), and the output includes material, density,
   basic loads, fixed beam-end support nodes and gravity.
+- Mecway `Flexible joint on beam` is translated directly from its face
+  selection. `rotu/rotv/rotw` map to UB31 torsion/M1/M2 release bits and
+  Mecway line2 face 2/3 maps to element end 1/2.
+- Mecway beam `Element offset` supports both global X/Y/Z and local U/V/W
+  vectors. Global vectors are transformed into each beam's local U/V/W frame,
+  and the generated `*BEAM SECTION` uses matching `OFFSET1/OFFSET2` values.
+  Element sets are split where necessary so each section card has one
+  orientation and one local offset.
 
 ## Supplied test.liml findings
 
@@ -47,8 +55,7 @@ the saved model:
 | C180x70 | CHAN | 0.18, 0.07, 0.011, 0.008 |
 | 70x70x8 | L | 0.07, 0.07, 0.008 |
 
-Five material+orientation groups. **Three unresolved validation items**:
-beam end releases, beam offsets, and L-section principal-axis rotation.
+The supplied model can now translate its beam end releases and beam offsets. The remaining section-specific validation item is L-section principal-axis rotation/equivalence against Mecway.
 
 ## Safety and outstanding work
 
@@ -56,13 +63,10 @@ The UB31 native interface is source-checked in the uploaded
 `CCX-UB31-B31T-B31E-update.zip`, not numerically regression-tested here.
 Mecway's L-axis convention uses principal properties whereas UB31 rotates
 L sections internally. Do not treat the L output as equivalent until
-orientation compatibility is verified. Releases and offsets are intentionally
-NOT translated; silently omitting them would change the structural model.
-The `safe_to_solve` report flag remains **false**.
+orientation compatibility is verified. Releases and offsets are now translated. The `safe_to_solve` report flag remains **false** while L-section principal-axis equivalence and full CCX numerical regression are outstanding.
 
-Next phase: verify each release at a selected member end and implement
-UB31-compatible offsets; then carry out beam analytical regressions and
-add CCX process launch and Mecway result import.
+Next phase: validate the generated deck against the patched CCX executable,
+resolve the L-section axis convention, then add CCX process launch and Mecway result import.
 
 References for axis/shape mapping: uploaded patch README and Fortran
 `e_c3d_ub31.f`; MecwayAsterBridge dev
