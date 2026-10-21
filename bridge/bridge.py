@@ -15,7 +15,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
-VERSION = '0.4'
+VERSION = '0.5'
 FLOAT_RE = re.compile(r'^\s*([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)\s*(.*?)\s*$')
 FORCE = {'N': 1.0, 'kN': 1000.0, 'MN': 1000000.0}
 STRESS = {'Pa': 1.0, 'kPa': 1.0e3, 'MPa': 1.0e6, 'GPa': 1.0e9}
@@ -190,6 +190,104 @@ def all_beam_axes(root,elements,nodes,errors):
     return axes,assigned
 
 
+def beam_frame(p,q,v):
+    """Return right-handed local U,V,W unit vectors for one beam."""
+    u=unit3(tuple(q[i]-p[i] for i in range(3)))
+    v=unit3(tuple(v[i]-dot3(v,u)*u[i] for i in range(3)))
+    w=unit3(cross3(u,v))
+    return u,v,w
+
+
+def read_offset_card(card):
+    """Read Mecway <offset> as either global X/Y/Z or local U/V/W."""
+    global_axes=any(card.find(k) is not None for k in ('x','y','z'))
+    local_axes=any(card.find(k) is not None for k in ('u','v','w'))
+    if global_axes and local_axes:
+        raise ValueError('Offset mixes global X/Y/Z and local U/V/W components')
+    if not global_axes and not local_axes:
+        return 'global',(0.,0.,0.)
+    names=(('x','y','z') if global_axes else ('u','v','w'))
+    vec=tuple(to_quantity(card.findtext(k,'0 m'),LENGTH) for k in names)
+    if not all(finite(x) for x in vec):
+        raise ValueError('Offset components must be finite')
+    return ('global' if global_axes else 'local'),vec
+
+
+def all_beam_offsets(root,elements,nodes,axes,errors):
+    """Map Mecway element offsets to local UB31 U/V/W vectors per element."""
+    selections=index_named(root,'elementselection')
+    offsets={}
+    for card in root.findall('offset'):
+        if card.get('suppressed') == 'true':
+            continue
+        name=card.get('selection')
+        chosen=selections.get(name)
+        if chosen is None:
+            errors.append('Missing offset element selection: ' + str(name))
+            continue
+        try:
+            frame,vec=read_offset_card(card)
+        except (ValueError,TypeError) as exc:
+            errors.append('Offset {0}: {1}'.format(name,exc))
+            continue
+        for item in chosen.findall('element'):
+            eid=int(item.get('eid'))
+            if eid not in elements or eid not in axes:
+                errors.append('Offset refers to missing/non-beam element ' + str(eid))
+                continue
+            if eid in offsets:
+                errors.append('Overlapping offset definitions on beam ' + str(eid))
+                continue
+            if frame == 'local':
+                local=vec
+            else:
+                conn=elements[eid]
+                u,v,w=beam_frame(nodes[conn[0]],nodes[conn[1]],axes[eid])
+                local=(dot3(vec,u),dot3(vec,v),dot3(vec,w))
+            offsets[eid]=local
+    return offsets
+
+
+def all_beam_releases(root,elements,errors):
+    """Map Mecway flexiblejoint face selections to UB31 release bitmasks.
+
+    Mecway rotu/rotv/rotw are rotations about local U/V/W. UB31 uses
+    T/RX=8, M1/RY=16, M2/RZ=32. Mecway line2 face 2 is end 1 and
+    face 3 is end 2.
+    """
+    selections=index_named(root,'faceselection')
+    releases={}
+    bits={'rotu':8,'rotv':16,'rotw':32}
+    for card in root.findall('flexiblejoint'):
+        if card.get('suppressed') == 'true':
+            continue
+        name=card.get('selection')
+        chosen=selections.get(name)
+        if chosen is None:
+            errors.append('Missing flexible-joint face selection: ' + str(name))
+            continue
+        code=0
+        invalid=False
+        for child in list(card):
+            if child.tag not in bits or child.attrib or (child.text or '').strip():
+                invalid=True
+                break
+            code |= bits[child.tag]
+        if invalid or code == 0:
+            errors.append('Flexible joint {0}: only free rotu/rotv/rotw releases are supported'.format(name))
+            continue
+        for face in chosen.findall('face'):
+            eid=int(face.get('eid'))
+            fid=int(face.get('faceid'))
+            if eid not in elements or fid not in (2,3):
+                errors.append('Invalid flexible-joint face: element {0}, face {1}'.format(eid,fid))
+                continue
+            end=(1 if fid == 2 else 2)
+            key=(eid,end)
+            releases[key]=releases.get(key,0) | code
+    return releases
+
+
 def translate(source, target=None, beam_type='B31T', draft=False):
     """Read LIML, create a JSON report and optionally an unsafe diagnostic INP."""
     source = os.path.abspath(source)
@@ -247,14 +345,10 @@ def translate(source, target=None, beam_type='B31T', draft=False):
         except ValueError as exc:
             errors.append('Material {0}: {1}'.format(name,exc))
     axes,assigned=all_beam_axes(root,elements,nodes,errors)
+    offsets=all_beam_offsets(root,elements,nodes,axes,errors)
+    releases=all_beam_releases(root,elements,errors)
     if any(spec[0]=='L' for spec in section_specs.values()):
         errors.append('L principal-axis rotation vs Mecway V unverified in patched UB31')
-    for tag, feature in (('flexiblejoint', 'beam end releases'),
-                         ('offset', 'member offsets')):
-        for item in root.findall(tag):
-            if item.get('suppressed') != 'true':
-                errors.append('Unsupported {0}: selection {1}'.format(
-                    feature,item.get('selection')))
 
     analysis = root.find('analysis')
     analysis_type = analysis.get('type') if analysis is not None else None
@@ -323,12 +417,15 @@ def translate(source, target=None, beam_type='B31T', draft=False):
         except (ValueError, TypeError) as exc:
             errors.append('Material {0} invalid: {1}'.format(name, exc))
 
-    # Each BEAM SECTION uses one orientation; split by material + V axis.
+    # Each BEAM SECTION carries one V axis and one uniform local offset.
+    # Split by material + V axis + local U/V/W offset.
     subsets={}
     for name,eids in groups.items():
         for eid in eids:
             if eid in axes:
-                key=(name,tuple(round(x,9) for x in axes[eid]))
+                off=offsets.get(eid,(0.,0.,0.))
+                key=(name,tuple(round(x,9) for x in axes[eid]),
+                     tuple(round(x,9) for x in off))
                 subsets.setdefault(key,[]).append(eid)
     sorted_keys=sorted(subsets)
     sections_report=dict((name,{'ccx_section':spec[0],
@@ -341,6 +438,8 @@ def translate(source, target=None, beam_type='B31T', draft=False):
         'elements': len(elements), 'materials': sorted(groups),
         'section_definitions': sections_report,
         'oriented_elements': len(assigned),
+        'offset_elements': len(offsets),
+        'released_element_ends': len(releases),
         'beam_section_orientation_groups': len(sorted_keys),
         'element_groups': dict((name, len(items)) for name, items in groups.items()),
         'fixed_nodes': sorted(fixed_nodes), 'nodal_forces': len(applied_forces),
@@ -356,7 +455,7 @@ def translate(source, target=None, beam_type='B31T', draft=False):
 
     with io.open(target, 'w', encoding='utf-8') as out:
         out.write(u'** Mecway CCX bridge v{0} - DIAGNOSTIC ONLY\n'.format(VERSION))
-        out.write(u'** DO NOT SOLVE: end releases/offsets and L axes unresolved\n')
+        out.write(u'** DO NOT SOLVE: L-section principal-axis equivalence still requires regression\n')
         out.write(u'*HEADING\nMecway diagnostic CCX input\n*NODE\n')
         lines(out, ((nid, '{0:.12g}'.format(p[0]), '{0:.12g}'.format(p[1]),
                      '{0:.12g}'.format(p[2])) for nid, p in sorted(nodes.items())))
@@ -381,11 +480,19 @@ def translate(source, target=None, beam_type='B31T', draft=False):
                 continue
             shape,dims,area=section_specs[name]
             out.write(u'** Mecway section {0} ideal area {1} m2\n'.format(name,fmt(area)))
-            out.write(u'*BEAM SECTION, ELSET=BEAM_{0:04d}, MATERIAL={1}, SECTION={2}\n'.format(
-                idx,mat_names[name],shape))
+            offset=key[2]
+            header=u'*BEAM SECTION, ELSET=BEAM_{0:04d}, MATERIAL={1}, SECTION={2}'.format(
+                idx,mat_names[name],shape)
+            if any(abs(x) > 1.e-14 for x in offset):
+                vals=u','.join(fmt(x) for x in offset)
+                header += u', OFFSET1=({0}), OFFSET2=({0})'.format(vals)
+            out.write(header + u'\n')
             lines(out,[tuple(fmt(x) for x in dims)])
             eid=subsets[key][0]
             lines(out,[tuple(fmt(x) for x in axes[eid])])
+        if releases:
+            out.write(u'*USER BEAM RELEASE\n')
+            lines(out, ((eid,end,code) for (eid,end),code in sorted(releases.items())))
         if gravity:
             out.write(u'*ELSET, ELSET=EALL\n')
             lines(out, ((eid,) for eid in sorted(elements)))
