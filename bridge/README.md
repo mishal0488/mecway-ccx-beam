@@ -70,3 +70,15 @@ References for axis/shape mapping: uploaded patch README and Fortran
 
 To run standalone Python tests (not needed for Mecway):
 `python -m unittest discover -s tests -v`.
+
+
+## Stable Mecway-tested baseline
+
+For a known-working Mecway/IronPython baseline, use
+`bridge/mecway_ccx_bridge_stable.py`.
+
+This single-file script is the last version confirmed to execute successfully
+inside Mecway and generate both an experimental `.inp` file and a
+`.report.json` validation report. It intentionally does not translate section
+cards, orientations, releases or offsets yet. The v0.4 `bridge.py` /
+`mecway_launcher.py` pair remains the development implementation.
