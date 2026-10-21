@@ -30,10 +30,10 @@ def _run():
     output = os.path.splitext(model_path)[0] + '_ccx_draft.inp'
     report = translate(model_path, output, BEAM_TYPE, draft=True)
     report_path = os.path.splitext(output)[0] + '.report.json'
-    message = ('Mecway CCX Beam Bridge v0.4\n\n'
+    message = ('Mecway CCX Beam Bridge v0.5\n\n'
                'Diagnostic export completed.\n'
                'Nodes: {0}\nBeam elements: {1}\nBeam section/orientation groups: {5}\nValidation issues: {2}\n\n'
-               'DO NOT SOLVE: beam definitions have not been validated.\n\n'
+               'DO NOT SOLVE: L-section axis equivalence and full CCX regression remain outstanding.\n\n'
                'Input draft: {3}\nValidation report: {4}').format(
                    report['nodes'], report['elements'], len(report['errors']),
                    output, report_path, report['beam_section_orientation_groups'])
