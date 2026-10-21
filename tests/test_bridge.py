@@ -85,9 +85,9 @@ class DeckTests(unittest.TestCase):
             self.assertEqual(text.count('*ELEMENT,'),2)
             self.assertIn('SECTION=I',text)
             self.assertIn('0.2, 0.1, 0.01, 0.1, 0.01, 0.006',text)
-            self.assertIn('0, -1,',text)
-            self.assertIn('-1, 0, 0',text)
-            self.assertIn('DO NOT SOLVE',text)
+            self.assertIn('0, 0, -1',text)
+            self.assertIn('0, 0, 1',text)
+            self.assertIn('MECWAY PROFILE AXIS FIX',text)
 
 
     def test_mecway_releases_and_global_offsets(self):
@@ -132,8 +132,8 @@ class DeckTests(unittest.TestCase):
             with io.open(target,'r',encoding='utf-8') as handle:
                 text=handle.read()
 
-            # Beam along +X, default V=+Y, hence global +Z is local +W.
-            self.assertIn('OFFSET1=(0,0,0.1), OFFSET2=(0,0,0.1)',text)
+            # Mecway I-profile V/W is mapped to the UB31 y/z basis.
+            self.assertIn('OFFSET1=(0,0.1,0), OFFSET2=(0,0.1,0)',text)
             # faceid=3 is element end 2; rotv+rotw = 16+32 = 48.
             self.assertIn('*USER BEAM RELEASE',text)
             self.assertIn('1, 2, 48',text)
