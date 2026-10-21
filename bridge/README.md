@@ -1,88 +1,53 @@
-# Mecway-to-CCX UB31 Beam Bridge v0.5 (development)
+# Mecway-to-CCX UB31 Beam Bridge v1.1
 
-Native Mecway IronPython 2.7 bridge for patched CalculiX B31T / B31E beams.
-**No external Python installation is required for Mecway operation.**
+Confirmed working development build for Mecway IronPython 2.7 and the patched CalculiX 2.23 B31T/UB31 solver.
 
-## Installation
+## Confirmed test model
 
-Download/clone the dev branch. Keep `bridge.py` and
-`mecway_launcher.py` in the same directory. In Mecway, select
-**Tools > Scripts... > New** and register `bridge/mecway_launcher.py`.
-Open and save a Mecway .liml file; then use
-**Tools > mecway_launcher** to export diagnostics.
+The working regression model contains 345 nodes and 360 two-node beam elements: 60 I-section members, 220 C-channel members and 80 L-angle members. It also contains 220 offset members, 16 released beam ends, gravity and a 10 kN nodal load.
 
-The launcher saves the currently open model through `mw.save()` and reads
-the model path through `mw.file_name()`. Generated files are placed next to
-the saved model:
+The bridge generated the CCX deck, launched the patched Windows CCX executable, and completed the static solve successfully.
 
-- `<model>_ccx_draft.inp`: **DIAGNOSTIC ONLY**; never use for design or reliable numerical solutions
-- `<model>_ccx_draft.report.json`: counts, material/section dimensions, validation errors
+## Correct profile-axis mapping
 
-## v0.5 implementation
+For Mecway I, C and L structural profiles, the Mecway V/W principal-axis convention is mapped to the native UB31 transverse basis as:
 
-- I-beams: Mecway `ia,ib,ic,id` map to UB31 `SECTION=I`:
-  `h,b,tf,b,tf,tw`
-- C channels: Mecway `ca,cb,cc,cd` map to
-  `SECTION=CHAN`: `h,b,tf,tw`
-- L angles: Mecway `la,lb,lc` map to
-  `SECTION=L`: `b,h,t`
-- Rectangular bars, rectangular tubes, circular bars and circular tubes
-  are translated into RECT, BOX, CIRC and PIPE cards.
-- Mecway `<orientation>` selections are mapped per element; the supplied
-  vector is projected normal to the member and its `angleu` is applied
-  with a right-handed rotation about the beam axis. The missing-orientation
-  default matches the vector rule in MecwayAsterBridge dev.
-- Members with the same section but different transverse orientation are
-  written in separate `BEAM_####` elsets, with a `*BEAM SECTION` per group.
-- All dimensions are SI (m), and the output includes material, density,
-  basic loads, fixed beam-end support nodes and gravity.
-- Mecway `Flexible joint on beam` is translated directly from its face
-  selection. `rotu/rotv/rotw` map to UB31 torsion/M1/M2 release bits and
-  Mecway line2 face 2/3 maps to element end 1/2.
-- Mecway beam `Element offset` supports both global X/Y/Z and local U/V/W
-  vectors. Global vectors are transformed into each beam's local U/V/W frame,
-  and the generated `*BEAM SECTION` uses matching `OFFSET1/OFFSET2` values.
-  Element sets are split where necessary so each section card has one
-  orientation and one local offset.
+- UB31 local y = Mecway W
+- UB31 local z = -Mecway V
 
-## Supplied test.liml findings
+L sections also compensate for UB31's internal principal-axis rotation.
 
-345 nodes; 360 line2 beams; three material profiles:
+Global or local beam offsets are transformed into this corrected final UB31 basis. Mecway flexible-joint rotational releases are translated to UB31 release masks; Mecway line2 face 2/3 maps to beam end 1/2.
 
-| Mecway | UB31 | SI dimensions |
-|---|---|---|
-| 152x152x30 | I | 0.1575, 0.1529, 0.0094, 0.1529, 0.0094, 0.0066 |
-| C180x70 | CHAN | 0.18, 0.07, 0.011, 0.008 |
-| 70x70x8 | L | 0.07, 0.07, 0.008 |
+## Solver and validation workflow
 
-The supplied model can now translate its beam end releases and beam offsets. The remaining section-specific validation item is L-section principal-axis rotation/equivalence against Mecway.
+Keep `bridge.py` and `mecway_launcher.py` together and run `mecway_launcher.py` from Mecway **Tools > Scripts**.
 
-## Safety and outstanding work
+The launcher:
 
-The UB31 native interface is source-checked in the uploaded
-`CCX-UB31-B31T-B31E-update.zip`, not numerically regression-tested here.
-Mecway's L-axis convention uses principal properties whereas UB31 rotates
-L sections internally. Do not treat the L output as equivalent until
-orientation compatibility is verified. Releases and offsets are now translated. The `safe_to_solve` report flag remains **false** while L-section principal-axis equivalence and full CCX numerical regression are outstanding.
+1. saves and solves the current Mecway model as an independent reference;
+2. translates the saved LIML to patched-CCX B31T input;
+3. runs the selected patched CCX executable;
+4. writes DAT/FRD/STA output plus dedicated multi-station UB31 beam CSV results;
+5. performs mass, self-weight, equilibrium and released-end checks;
+6. writes node-by-node Mecway-vs-CCX displacement, rotation and reaction comparisons.
 
-Next phase: validate the generated deck against the patched CCX executable,
-resolve the L-section axis convention, then add CCX process launch and Mecway result import.
+The selected CCX executable path is stored locally in `ccx_executable.txt`.
 
-References for axis/shape mapping: uploaded patch README and Fortran
-`e_c3d_ub31.f`; MecwayAsterBridge dev
-`Scripts/bridge_from_liml.py` and `Scripts/bridge_mesh.py`.
+## Confirmed B31T numerical results
 
-To run standalone Python tests (not needed for Mecway):
-`python -m unittest discover -s tests -v`.
+For the confirmed 360-element model:
 
+- global force-equilibrium residual: approximately 4.7e-4 N;
+- dedicated UB31 beam output: 3960 rows (360 elements × 11 stations);
+- all 16 released ends: released bending moments zero to output precision;
+- after the I/C/L profile-axis correction, Mecway-vs-CCX nodal responses were strongly correlated;
+- maximum Ux differed by about 1.4%;
+- maximum Uz differed by about 3.8%;
+- major rotations differed by about 0.4–1.2%.
 
-## Stable Mecway-tested baseline
+This is the latest user-confirmed working **B31T** build. The separate B31E comparison remains experimental until it is run and confirmed.
 
-For a known-working Mecway/IronPython baseline, use
-`bridge/mecway_ccx_bridge_stable.py`.
+## Repository note
 
-This single-file script is the last version confirmed to execute successfully
-inside Mecway and generate both an experimental `.inp` file and a
-`.report.json` validation report. It intentionally does not translate section
-cards, orientations, releases or offsets yet. The v0.4 `bridge.py` /
-`mecway_launcher.py` pair remains the development implementation.
+`bridge/releases/Mecway_CCX_v1_1_axis_fix.zip` preserves the exact user-tested v1.1 package.
