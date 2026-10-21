@@ -90,5 +90,54 @@ class DeckTests(unittest.TestCase):
             self.assertIn('DO NOT SOLVE',text)
 
 
+    def test_mecway_releases_and_global_offsets(self):
+        with tempfile.TemporaryDirectory() as td:
+            source=os.path.join(td,'model.liml')
+            target=os.path.join(td,'draft.inp')
+
+            root=ET.Element('liml')
+            ET.SubElement(root,'analysis',type='S30')
+            ET.SubElement(root,'node',nid='1',x='0',y='0',z='0')
+            ET.SubElement(root,'node',nid='2',x='1',y='0',z='0')
+
+            group=ET.SubElement(root,'elset',name='beam',material='steel')
+            ET.SubElement(group,'elem',eid='1',shape='line2',nodes='1 2')
+
+            material=ET.SubElement(root,'mat',name='steel')
+            ET.SubElement(material,'geometric',type='I',ia='200 mm',
+                          ib='100 mm',ic='10 mm',id='6 mm')
+            ET.SubElement(material,'mechanical',type='Isotropic',
+                          youngsmodulus='200 GPa',poissonratio='0.3')
+
+            offset_sel=ET.SubElement(root,'elementselection',name='offset_beam')
+            ET.SubElement(offset_sel,'element',eid='1')
+            off=ET.SubElement(root,'offset',selection='offset_beam')
+            ET.SubElement(off,'x').text='0 mm'
+            ET.SubElement(off,'y').text='0 mm'
+            ET.SubElement(off,'z').text='100 mm'
+
+            face_sel=ET.SubElement(root,'faceselection',name='release_end')
+            ET.SubElement(face_sel,'face',eid='1',faceid='3')
+            joint=ET.SubElement(root,'flexiblejoint',selection='release_end')
+            ET.SubElement(joint,'rotv')
+            ET.SubElement(joint,'rotw')
+
+            ET.ElementTree(root).write(
+                source,encoding='utf-8',xml_declaration=True)
+
+            report=bridge.translate(source,target,'B31T',draft=True)
+            self.assertEqual(report['offset_elements'],1)
+            self.assertEqual(report['released_element_ends'],1)
+
+            with io.open(target,'r',encoding='utf-8') as handle:
+                text=handle.read()
+
+            # Beam along +X, default V=+Y, hence global +Z is local +W.
+            self.assertIn('OFFSET1=(0,0,0.1), OFFSET2=(0,0,0.1)',text)
+            # faceid=3 is element end 2; rotv+rotw = 16+32 = 48.
+            self.assertIn('*USER BEAM RELEASE',text)
+            self.assertIn('1, 2, 48',text)
+
+
 if __name__=='__main__':
     unittest.main()
